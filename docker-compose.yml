@@ -1,0 +1,13 @@
+version: "3"
+
+services:
+  bind9:
+    build: .
+    restart: unless-stopped
+    container_name: bind9
+    environment:
+      - DNS=${DNS}
+    ports:
+      - 53:53
+      - 53:53/udp
+      - 953:953
