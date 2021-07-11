@@ -9,7 +9,7 @@ of="/etc/bind/named.conf.options"
 # create folder for zone files if doesn't exists
 [ -d /etc/bind/zones/ ] || mkdir -p /etc/bind/zones/
 
-# remove brackets at the end of file
+# remove options brackets at the end of file
 sed -i "s/^};/\n# K8s config\n/g" $of
 
 # trusted host for recursion
@@ -36,6 +36,7 @@ if [ "$aqc" != "null" ] ; then
     cfg="${cfg}\tallow-query-cache { $aqc };"
 fi
 
+# echo above config value and close option brackets
 echo -e "\n$cfg" >> $of
 echo -e "\n};" >> $of
 
