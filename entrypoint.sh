@@ -1,42 +1,60 @@
 #!/bin/bash
 
-#echo "$DNS" | jq -r ".[\"d4n.eu\"] | .DNS | .[\"*\"] | .IP" > /root/tmp
-
 lf="/etc/bind/named.conf.local"
 of="/etc/bind/named.conf.options"
 
+#lf="./x"
 #DNS=$(cat /opt/docker/bind9/dns.json)
-#lf="/opt/docker/bind9/xxx"
 
 # create folder for zone files if doesn't exists
 [ -d /etc/bind/zones/ ] || mkdir -p /etc/bind/zones/
 
-# allow recursion - command must be before trusted hosts
-sed -i 's/^};/\n\tallow-query { any; };\n\tallow-recursion { trusted; };\n\tallow-query-cache { trusted; };\n};/g' $of
+# remove brackets at the end of file
+sed -i "s/^};/\n# K8s config\n/g" $of
 
 # trusted host for recursion
-echo -e "\nacl \"trusted\" {" >> $of
-echo -e "\t10.0.0.0/24;" >> $of
-echo -e "\tlocalhost;" >> $of
-echo -e "\tlocalnets;" >> $of
-echo -e "};" >> $of
+# echo -e "\nacl \"trusted\" {" >> $of
+# echo -e "\t10.0.0.0/24;" >> $of
+# echo -e "\tlocalhost;" >> $of
+# echo -e "\tlocalnets;" >> $of
+# echo -e "};" >> $of
+
+cfg=""
+
+aq=$(echo "$DNS" | jq -rM ".config | .[\"allow-query\"]")
+if [ "$aq" != "null" ] ; then
+    cfg="${cfg}\tallow-query { $aq };"
+fi
+
+ar=$(echo "$DNS" | jq -rM ".config | .[\"allow-recursion\"]")
+if [ "$ar" != "null" ] ; then
+    cfg="${cfg}\tallow-recursion { $ar };"
+fi
+
+aqc=$(echo "$DNS" | jq -rM ".config | .[\"allow-query-cache\"]")
+if [ "$aqc" != "null" ] ; then
+    cfg="${cfg}\tallow-query-cache { $aqc };"
+fi
+
+echo -e "\n$cfg" >> $of
+echo -e "\n};" >> $of
 
 # we don't need IPv6
-sed -i 's/listen-on-v6 { any; };/#listen-on-v6 { any; };/g' $of
+sed -i 's/listen-on-v6 { any; };/listen-on-v6 { none; };/g' $of
 
-echo $DNS | jq 'keys[]' -r | while read domain ; do
+echo $DNS | jq -r ".domains" | jq 'keys[]' -r | while read domain ; do
     zf="/etc/bind/zones/db.$domain"
+
+    ip=$(echo "$DNS" | jq -r ".domains | .[\"$domain\"] | .A")
+    ns1=$(echo "$DNS" | jq -r ".domains | .[\"$domain\"] | .NS1")
+    ns2=$(echo "$DNS" | jq -r ".domains | .[\"$domain\"] | .NS2")
 
     echo -e "\nzone \"$domain\" {" >> $lf
     echo "    type master;" >> $lf
     echo "    file \"$zf\";" >> $lf
     echo "};" >> $lf
 
-    ip=$(echo "$DNS" | jq -r ".[\"$domain\"] | .A")
-    ns1=$(echo "$DNS" | jq -r ".[\"$domain\"] | .NS1")
-    ns2=$(echo "$DNS" | jq -r ".[\"$domain\"] | .NS2")
-
-    echo "; Domain: $domain" >> $zf
+    echo "; Domain: $domain" > $zf
     echo "\$TTL    1" >> $zf
     echo "@       IN      SOA     $domain. root.$domain. (" >> $zf
     echo "                        $(date +%s)      ; Serial" >> $zf
@@ -50,9 +68,9 @@ echo $DNS | jq 'keys[]' -r | while read domain ; do
     echo "        IN      A       $ip" >> $zf
     echo "ns1     IN      A       $ns1" >> $zf
     echo "ns2     IN      A       $ns2" >> $zf
-    echo "$DNS" | jq -r ".[\"$domain\"] | .DNS" | jq 'keys[]' -r | while read dns ; do
-        t=$(echo "$DNS" | jq -r ".[\"$domain\"] | .DNS | .[\"$dns\"] | .TYPE")
-        val=$(echo "$DNS" | jq -r ".[\"$domain\"] | .DNS | .[\"$dns\"] | .VALUE")
+    echo "$DNS" | jq -r ".domains | .[\"$domain\"] | .DNS" | jq 'keys[]' -r | while read dns ; do
+        t=$(echo "$DNS" | jq -r ".domains | .[\"$domain\"] | .DNS | .[\"$dns\"] | .type")
+        val=$(echo "$DNS" | jq -r ".domains | .[\"$domain\"] | .DNS | .[\"$dns\"] | .value")
         if [ $t = "A" ] ; then
             echo -e "$dns\t\tIN\t\t$t\t\t$val" >> $zf
         else
