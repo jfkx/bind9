@@ -1,3 +1,5 @@
 dns.json
 .git*
 *.old
+.dbv
+build.sh
